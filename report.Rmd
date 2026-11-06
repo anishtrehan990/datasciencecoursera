@@ -1,0 +1,44 @@
+---
+title: "Predicting barbell lift quality"
+output:
+  html_document:
+    toc: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Aim and data
+
+The outcome `classe` labels five ways of performing a barbell lift (A to E). I used the [course training and test CSV files](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv). The training data have 19,622 rows; the separate test set has 20 rows whose labels are withheld.
+
+## Preprocessing and model
+
+I excluded the first seven columns, which contain row number, participant, timestamps, and recording-window information. They can identify the collection process rather than the lift motion. I kept numeric sensor columns with no missing values in either dataset, leaving 52 features. A random forest with 100 trees handles nonlinear sensor relationships without scaling or manual feature selection. All filtering depends on training/test feature availability, never on the held-out labels.
+
+The analysis script downloads the CSVs if needed, fits the model, writes `predictions.txt` in test-row order, and records the validation results. Run this chunk when knitting the report:
+
+```{r run-analysis}
+status <- system2("python3", "analyze.py", stdout = FALSE, stderr = FALSE)
+if (status != 0) stop("Analysis failed; see README.md for dependencies")
+result <- jsonlite::fromJSON("results.json")
+round(result$cv_accuracy, 4)
+```
+
+## Validation and expected error
+
+I set aside a stratified 20% of the labeled data as a final validation set. Within the other 80%, I used shuffled, stratified three-fold cross-validation to assess the fixed forest settings. The mean cross-validation accuracy was **`r sprintf('%.2f%%', 100 * result$cv_mean)`**. The untouched validation set accuracy was **`r sprintf('%.2f%%', 100 * result$validation_accuracy)`**, corresponding to **`r sprintf('%.2f%%', 100 * result$validation_error)`** error (`r sum(diag(result$confusion))` correct out of `r result$n_validation`). The cross-validation error, about **`r sprintf('%.2f%%', 100 * (1 - result$cv_mean))`**, is the more conservative estimate for new cases from this same collection setting. Performance on different people or devices may be worse.
+
+## Test predictions
+
+After validation, I refit the same model on all labeled rows and predicted the 20 withheld cases. The one-letter answers below are in the provided test-set order; `predictions.txt` also contains one answer per line.
+
+```{r predictions, echo=FALSE}
+knitr::kable(data.frame(case = seq_along(result$predictions),
+                        classe = result$predictions))
+```
+
+## Data credit
+
+Velloso, E., Bulling, A., Gellersen, H., Ugulino, W., and Fuks, H. (2013). [Qualitative activity recognition of weight lifting exercises](https://doi.org/10.1145/2459236.2459256). *Proceedings of the 4th Augmented Human International Conference*, 116–123. The course [training](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) and [testing](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv) files are used here.
